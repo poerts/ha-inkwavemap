@@ -10,9 +10,21 @@ HomeAssistantWebAPIUrl="./../../.."
 GaodeMapKey=""
 
 
+// 永久Token(HomeAssistant 0.77.2版本以上时可用)
+// HomeAssistant 0.77.2版本以后，HomeAssistant登录后如果未启用记住密码，墨澜地图将无法自行获取Token（配置了正确的LongTimeToken后可以正常使用）
+// 获取方式见：https://bbs.hassbian.com/thread-4695-1-1.html
+// (选填)
+LongTimeToken=""
+
+
+
 // 指定追踪设备ID（多个设备时用半角逗号做分隔“,”，如"xiaomi8_Self,iphoneX_Mother,iphone8"）
 // 不指定时默认显示全部可追踪的设备
 // (选填)
 DeviceTrackerIDList=""
 
-
+//指定追踪多设备的group组名称，如：maptracker
+//强烈建议使用group组模式，支持HomeAssistant0.88版本中的PERSON组件
+//配置group组模式后，DeviceTrackerIDList无需再填写
+// (选填)
+MapTrackerGroupName=""
