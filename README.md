@@ -61,6 +61,13 @@
 出现此问题一般是由于高德 API 申请时选错『服务平台』导致，注意请选择『web 端』，而不是 『web 服务』。
 
 ## 版本更新日志
+### v1.0（2019.03.11）
+1. 本次发布时对应的HomeAssistant版本0.89.1
+2. 安装：拷贝 www 、panels 、custom_components 文件夹至 Home Assistant 配置文件夹
+3. 配置：config.js中填写对应信息
+4. 功能：支持HomeAssistant最新的person类型（强烈建议使用这个）。在HomeASsistant中新建group分组，将person或device_tracker添加到组中，在config.js中配置MapTrackerGroupName组名即可
+5. 原有的配置细节见github中的原说明信息
+
 ### 0.0.3
 1. 增加路径图示；
 2. 支持新版授权机制。
