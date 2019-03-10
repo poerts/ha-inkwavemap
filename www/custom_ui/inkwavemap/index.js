@@ -13,10 +13,37 @@ var newToken = null;
 $(function() {
 //alert(txtDrawStart);
 	storage=window.localStorage;
-	authToken = storage.getItem("authToken"); //旧版模式
-	newTokens = JSON.parse(storage.getItem("tokens"));
-	newToken = newTokens.token_type + " " + newTokens.access_token; //新版模式
+	try{
+		authToken = storage.getItem("authToken"); //旧版模式
+		newTokens = JSON.parse(storage.getItem("tokens")); //新版HA:0.76~0.77.1
+	}
+	catch(ex){
+		null;
+	}
+
+	if (LongTimeToken != "")  //config.js配置的长期有效token
+	{
+		newToken = LongTimeToken;
+	}
+	else
+	{
+		if (newTokens == null)
+		{
+			newTokens = JSON.parse(storage.getItem("hassTokens")); //新版0.77.2
+		}
+		if (newTokens != null)
+		{
+			newToken = newTokens.token_type + " " + newTokens.access_token; //新版模式
+		}
+	}
 	
+
+	if (authToken == null && newToken == null)
+	{
+		alert("获取授权token失败");
+		alert("如果HomeAssistant版本是0.77.2版本以上，登录HomeAssistant后保存密码（或者在config.js中配置LongTimeToken），再刷新此页面");
+		return;
+	}
 	
 	getDataMode = "client";  //不再使用server模式，client模式安全性没问题
 
@@ -108,11 +135,7 @@ $(function() {
 		
     });
 	
-	if (getDataMode == "client"){
-		url = HomeAssistantWebAPIUrl + "/api/config";
-	}else{
-		url = phpUrl + "?type=getConfig";
-	}
+	url = HomeAssistantWebAPIUrl + "/api/config";
 	//alert(url);
     $.ajax({
         type: "GET",
@@ -147,11 +170,7 @@ $(function() {
 	//mengqi
 	//读取所有的zone信息
 	var arrZone = Array();
-	if (getDataMode == "client"){
-		url = HomeAssistantWebAPIUrl + "/api/states";
-	}else{
-		url = phpUrl + "?type=getStates";
-	}
+	url = HomeAssistantWebAPIUrl + "/api/states";
 	$.ajax({
         type: "GET",
         url: url,
@@ -304,15 +323,20 @@ function LoadStorage(){
 }
 
 function getLocationData(deviceId){
-	var str_deviceid = "device_tracker." + deviceId;
+	var str_deviceid = "";//"device_tracker." + deviceId;
 	var str_queryTimeFrom = getStandardDatetime($('#queryTimeFrom').datetimebox('getValue'));
 	var str_queryTimeTo = getStandardDatetime($('#queryTimeTo').datetimebox('getValue'));
 	
-	if (getDataMode == "client"){
-		url = HomeAssistantWebAPIUrl + "/api/history/period/"+ str_queryTimeFrom+ "?end_time="+ str_queryTimeTo+ "&filter_entity_id="+ str_deviceid;
-	}else{
-		url = phpUrl + "?type=getHistoryPeriodForDeviceId&timeFrom="+str_queryTimeFrom+"&timeTo="+str_queryTimeTo+"&deviceId="+deviceId;
+	if (deviceId.indexOf("person.") == -1 && deviceId.indexOf("device_tracker.") == -1)
+	{
+		str_deviceid = "device_tracker." + deviceId;
 	}
+	else
+	{
+		str_deviceid = deviceId;
+	}
+	
+	url = HomeAssistantWebAPIUrl + "/api/history/period/"+ str_queryTimeFrom+ "?end_time="+ str_queryTimeTo+ "&filter_entity_id="+ str_deviceid;
 	
 	var arr = new Array();
 	//alert(url);
@@ -332,6 +356,14 @@ function getLocationData(deviceId){
 			$.each(datajson, function (i, n)
 			{
 				if (n.attributes["source_type"] == "gps")
+				{
+					arr.push({
+						'longitude': n.attributes['longitude'], 
+						'latitude': n.attributes['latitude'],
+						'updatedate': getDatetime(n.last_updated),
+						'lnglat': [ n.attributes['longitude'],n.attributes['latitude']]
+					});
+				}else if (n.attributes["latitude"] != undefined && n.attributes["longitude"] != null)
 				{
 					arr.push({
 						'longitude': n.attributes['longitude'], 
@@ -365,11 +397,16 @@ function trackBtnShow(){
 
 function getDevice(deviceId) {
     var getDeviceFun = function() {
-		if (getDataMode == "client"){
-			url = HomeAssistantWebAPIUrl + "/api/states/device_tracker." + deviceId;
-		}else{
-			url = phpUrl + "?type=getStatesForDeviceId&deviceId="+ deviceId;
+		var dId = deviceId;
+		if (deviceId.indexOf("person.") == -1 && deviceId.indexOf("device_tracker.") == -1)
+		{
+			dId = "device_tracker."+ deviceId;
 		}
+		else
+		{
+			dId = deviceId;
+		}
+		url = HomeAssistantWebAPIUrl + "/api/states/" + dId;
         $.ajax({
             type: "GET",
             url: url,
@@ -433,51 +470,99 @@ $(document).on("zoomchange", function() {
 });
 $(document).on("mapInitFinished", function() {
     syncToolbarState(['zoomin', 'zoomout', 'traffic', 'homepoint', 'homerange', 'devicelist']);
-	if (getDataMode == "client"){
+	
+	if (MapTrackerGroupName == "")
+	{
 		url = HomeAssistantWebAPIUrl + "/api/states/group.all_devices";
-	}else{
-		url = phpUrl + "?type=getAllDevices";
+		$.ajax({
+			type: "GET",
+			url: url,
+			beforeSend: function(request) {
+				  request.setRequestHeader("x-ha-access", authToken);
+				  request.setRequestHeader("Authorization", newToken);
+			  },
+			cache: false,
+			async: true,
+			success: function(data) {
+				if(null == data) {
+					return;
+				}
+				if(typeof(data) === 'string') {
+					data = $.parseJSON(data);
+				}
+				if(null == data.attributes) {
+					return;
+				}
+				if(null == data.attributes.entity_id) {
+					return;
+				}
+				var idlist = DeviceTrackerIDList.replace("device_tracker.","");
+				//var PersonIDList = PersonIDList
+				for(var index in data.attributes.entity_id) {
+					var deviceFulId = data.attributes.entity_id[index];
+					var deviceId = deviceFulId.replace("device_tracker.", "");
+					if (idlist!="" && (idlist+",").indexOf(deviceId) == -1){
+						continue;
+					} 
+					insertDeviceList(0, {
+						//checked: true,
+						id: deviceId,
+						name: 'loading...',
+						state: '---'
+					});
+					getDevice(deviceId);
+				}
+			}
+		});
 	}
-    $.ajax({
-        type: "GET",
-        url: url,
-		beforeSend: function(request) {
-			  request.setRequestHeader("x-ha-access", authToken);
-			  request.setRequestHeader("Authorization", newToken);
-		  },
-        cache: false,
-        async: true,
-        success: function(data) {
-            if(null == data) {
-                return;
-            }
-            if(typeof(data) === 'string') {
-                data = $.parseJSON(data);
-            }
-            if(null == data.attributes) {
-                return;
-            }
-            if(null == data.attributes.entity_id) {
-                return;
-            }
-			var idlist = DeviceTrackerIDList.replace("device_tracker.","");
-            for(var index in data.attributes.entity_id) {
-                var deviceFulId = data.attributes.entity_id[index];
-                var deviceId = deviceFulId.replace("device_tracker.", "");
-				if (idlist!="" && idlist+",".indexOf(deviceId) == -1){
-					continue;
-				} 
-                insertDeviceList(0, {
-                    //checked: true,
-                    id: deviceId,
-                    name: 'loading...',
-                    state: '---'
-                });
-                getDevice(deviceId);
-            }
-        }
-    });
+	else{
+		url = HomeAssistantWebAPIUrl + "/api/states/group."+MapTrackerGroupName;
+		$.ajax({
+			type: "GET",
+			url: url,
+			beforeSend: function(request) {
+				  request.setRequestHeader("x-ha-access", authToken);
+				  request.setRequestHeader("Authorization", newToken);
+			  },
+			cache: false,
+			async: true,
+			success: function(data) {
+				if(null == data) {
+					return;
+				}
+				if(typeof(data) === 'string') {
+					data = $.parseJSON(data);
+				}
+				if(null == data.attributes) {
+					return;
+				}
+				if(null == data.attributes.entity_id) {
+					return;
+				}
+				var idlist = DeviceTrackerIDList.replace("device_tracker.","");
+				//var PersonIDList = PersonIDList
+				for(var index in data.attributes.entity_id) {
+					var deviceFulId = data.attributes.entity_id[index];
+					var deviceId = deviceFulId;
+					//var deviceId = deviceFulId.replace("device_tracker.", "");
+					//if (idlist!="" && (idlist+",").indexOf(deviceId) == -1){
+					//	continue;
+					//} 
+					insertDeviceList(0, {
+						//checked: true,
+						id: deviceId,
+						name: 'loading...',
+						state: '---'
+					});
+					getDevice(deviceId);
+				}
+			}
+		});
+	}
+		
 });
+
+
 $(document).on("updateDrivingTime", function(event, params) {
 	var strState = null;
 	var strState_r = getDeviceListValue(params['deviceId'],'state_r');
